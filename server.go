@@ -83,6 +83,11 @@ func (s *Server) serveConn(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
+
+	// socks5 -> 5
+	// socks5h -> 5
+  fmt.Printf("serveConn: conn version = %d\n", version)
+
 	if version != socks5Version {
 		return fmt.Errorf("unsupported SOCKS version: %d", version)
 	}
@@ -159,6 +164,10 @@ func (s *Server) serveConn(conn net.Conn) error {
 
 	req.Command = Command(header[1])
 
+  // connect
+  fmt.Printf("serveConn: req command = %s\n", req.Command)
+
+  // readAddr from common.go
 	dest, err := readAddr(conn)
 	if err != nil {
 		if err == errUnrecognizedAddrType {
@@ -169,7 +178,27 @@ func (s *Server) serveConn(conn net.Conn) error {
 		}
 		return err
 	}
+
 	req.DestinationAddr = dest
+
+  if req.DestinationAddr.IP != nil {
+    fmt.Printf("serveConn: req DestinationAddr.IP = %s\n", req.DestinationAddr.IP)
+  } else {
+    fmt.Printf("serveConn: req DestinationAddr.Name = %s\n", req.DestinationAddr.Name)
+  }
+  fmt.Printf("serveConn: req DestinationAddr.Port = %d\n", req.DestinationAddr.Port)
+
+  // return error if the client is using socks5 (and not socks5h)
+  // socks5: DestinationAddr.IP != nil
+  // socks5h: DestinationAddr.IP == nil
+
+  if req.DestinationAddr.IP != nil {
+    fmt.Printf("serveConn: error: client tried to use socks5 with DestinationAddr.IP = %s\n", req.DestinationAddr.IP)
+  	return nil
+  }
+
+  // TODO filter requests by req.DestinationAddr.Name and req.DestinationAddr.Port
+
 	err = s.handle(req)
 	if err != nil {
 		return err
@@ -181,12 +210,16 @@ func (s *Server) serveConn(conn net.Conn) error {
 func (s *Server) handle(req *request) error {
 	switch req.Command {
 	case ConnectCommand:
+	  fmt.Println("handle: connect")
 		return s.handleConnect(req)
 	case BindCommand:
+	  fmt.Println("handle: bind")
 		return s.handleBind(req)
 	case AssociateCommand:
+	  fmt.Println("handle: associate")
 		return s.handleAssociate(req)
 	default:
+	  fmt.Println("handle: default")
 		if err := sendReply(req.Conn, commandNotSupported, nil); err != nil {
 			return err
 		}
@@ -195,8 +228,13 @@ func (s *Server) handle(req *request) error {
 }
 
 func (s *Server) handleConnect(req *request) error {
+  fmt.Println("handleConnect")
 	ctx := s.context()
 	target, err := s.proxyDial(ctx, "tcp", req.DestinationAddr.Address())
+	// socks5: handleConnect: connecting to 52.2.44.66:443
+  // socks5h: handleConnect: connecting to httpbin.org:443
+  // TODO enforce socks5h
+  fmt.Printf("handleConnect: connecting to %v\n", req.DestinationAddr)
 	if err != nil {
 		if err := sendReply(req.Conn, errToReply(err), nil); err != nil {
 			return fmt.Errorf("failed to send reply: %v", err)
@@ -210,6 +248,7 @@ func (s *Server) handleConnect(req *request) error {
 	if !ok {
 		return fmt.Errorf("connect to %v failed: local address is %s://%s", req.DestinationAddr, localAddr.Network(), localAddr.String())
 	}
+  fmt.Printf("handleConnect: local address is %s://%s\n", localAddr.Network(), localAddr.String())
 	bind := address{IP: local.IP, Port: local.Port}
 	if err := sendReply(req.Conn, successReply, &bind); err != nil {
 		return fmt.Errorf("failed to send reply: %v", err)
