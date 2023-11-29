@@ -1,0 +1,27 @@
+```
+$ ./cmd/socks5/socks5 & sleep 1; curl --proxy socks5h://localhost:1080 https://httpbin.org/ip
+handle: connect
+```
+
+see also: run.sh
+
+
+
+### bind: address already in use
+
+the server can leave open connections after termination
+
+```
+$ netstat -nap 2>/dev/null | grep -w 1080 
+tcp6       0      0 ::1:45616               ::1:1080                TIME_WAIT   -           
+```
+
+"fixed" by waiting for the kernel to close the connections
+
+man netstat
+
+```
+   -p, --program
+       Show the PID and name of the program to which each socket belongs.  A hyphen is shown if the socket belongs to the kernel (e.g. a kernel service,
+       or the process has exited but the socket hasn't finished closing yet).
+```
